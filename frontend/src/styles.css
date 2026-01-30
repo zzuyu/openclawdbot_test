@@ -82,6 +82,13 @@ input,button,select{
   font: inherit;
 }
 
+select{
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--mist);
+  background: rgba(255,255,255,.65);
+}
+
 input{
   width: 100%;
   padding: 10px 12px;

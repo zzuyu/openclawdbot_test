@@ -7,6 +7,7 @@ type StateMsg = {
   roomId: string
   players: Player[]
   drawerId: string | null
+  category: string
   round: { startedMs: number | null; durationS: number }
 }
 
@@ -38,6 +39,7 @@ export default function App() {
 
   const [clientId, setClientId] = useState<string | null>(null)
   const [state, setState] = useState<StateMsg | null>(null)
+  const [categories, setCategories] = useState<string[]>([])
   const [word, setWord] = useState('')
   const [chat, setChat] = useState<{ system?: boolean; name?: string; text: string }[]>([])
 
@@ -67,6 +69,17 @@ export default function App() {
     }, 250)
     return () => clearInterval(t)
   }, [state?.round.startedMs])
+
+  useEffect(() => {
+    // fetch wordbank categories
+    fetch('/api/wordbank')
+      .then((r) => r.json())
+      .then((d) => {
+        const cats = Object.keys(d.categories || {})
+        setCategories(cats)
+      })
+      .catch(() => {})
+  }, [])
 
   function addChat(line: { system?: boolean; name?: string; text: string }) {
     setChat((c) => [...c.slice(-150), line])
@@ -289,6 +302,7 @@ export default function App() {
                   <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
                     你是：{isDrawer ? '画师' : '猜测者'}
                     {roundLeft != null ? ` · 剩余 ${(roundLeft / 1000).toFixed(0)}s` : ''}
+                    {state?.category ? ` · 分类：${state.category}` : ''}
                   </div>
                 </div>
 
@@ -300,6 +314,43 @@ export default function App() {
                     清屏
                   </button>
                 </div>
+              </div>
+
+              <div className="row" style={{ marginBottom: 10, gap: 10 }}>
+                <label className="muted" style={{ fontSize: 12 }}>题库分类</label>
+                <select
+                  value={state?.category || '默认'}
+                  onChange={(e) => send('setCategory', { category: e.target.value })}
+                  style={{ padding: '10px 12px', borderRadius: 12, border: '1px solid rgba(31,41,55,.10)', background: 'rgba(255,255,255,.65)' }}
+                >
+                  {(categories.length ? categories : ['默认']).map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+
+                <input
+                  type="file"
+                  accept="application/json"
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0]
+                    if (!f) return
+                    try {
+                      const text = await f.text()
+                      const payload = JSON.parse(text)
+                      const r = await fetch('/api/wordbank', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+                      const d = await r.json()
+                      if (d.ok) {
+                        const wb = await (await fetch('/api/wordbank')).json()
+                        setCategories(Object.keys(wb.categories || {}))
+                        addChat({ system: true, text: `题库已更新：${Object.keys(wb.categories || {}).join('、')}` })
+                      } else {
+                        addChat({ system: true, text: '题库更新失败（后端没接住）。' })
+                      }
+                    } catch {
+                      addChat({ system: true, text: '这 JSON 看起来不太像 JSON…' })
+                    }
+                  }}
+                />
               </div>
 
               <div className="row" style={{ marginBottom: 10, gap: 12 }}>

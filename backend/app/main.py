@@ -10,9 +10,10 @@ from typing import Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="你画我猜 Demo")
+from .wordbank import Wordbank, load_wordbank, parse_wordbank_payload, save_wordbank
 
-# In dev we run Vite on 18789. Allow it.
+app = FastAPI(title="你画我猜")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,20 +22,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-WORDS = [
-    "熊猫",
-    "饺子",
-    "火锅",
-    "长城",
-    "京剧",
-    "灯笼",
-    "龙",
-    "竹子",
-    "汉服",
-    "月饼",
-    "扇子",
-    "故宫",
-]
+DATA_PATH = __import__("pathlib").Path(__file__).resolve().parent / "data" / "wordbank.json"
+WORDBANK: Wordbank = load_wordbank(DATA_PATH)
 
 
 def now_ms() -> int:
@@ -55,8 +44,12 @@ class Room:
     players: dict[str, Player] = field(default_factory=dict)  # key: client_id
     drawer_id: str | None = None
     word: str | None = None
+    masked_word: str | None = None
     round_started_ms: int | None = None
     round_duration_s: int = 60
+    intermission_s: int = 3
+
+    category: str = "默认"
 
     # Keep last N draw events so late joiners see something.
     draw_log: list[dict[str, Any]] = field(default_factory=list)
@@ -69,6 +62,7 @@ class Room:
                 for cid, p in self.players.items()
             ],
             "drawerId": self.drawer_id,
+            "category": self.category,
             "round": {
                 "startedMs": self.round_started_ms,
                 "durationS": self.round_duration_s,
@@ -113,29 +107,59 @@ def choose_drawer(room: Room) -> str | None:
         return ordered[0][0]
 
 
-async def start_round(room: Room):
+def choose_word(room: Room) -> str:
+    cats = WORDBANK.categories
+    words = cats.get(room.category) or cats.get("默认") or []
+    if not words:
+        # should not happen after normalize
+        return "熊猫"
+    return random.choice(words)
+
+
+async def start_round(room: Room, *, force: bool = False):
+    # If a round is already running, do nothing unless force.
+    if room.round_started_ms is not None and not force:
+        return
+
     room.drawer_id = choose_drawer(room)
-    room.word = random.choice(WORDS)
+    room.word = choose_word(room)
+    room.masked_word = "_" * len(room.word or "")
     room.round_started_ms = now_ms()
     room.draw_log.clear()
 
-    # Tell everyone the public state.
     await broadcast(room, "state", room.public_state())
 
-    # Tell drawer the word; others get masked.
     if room.drawer_id and room.drawer_id in room.players:
         await send(room.players[room.drawer_id].ws, "word", {"word": room.word})
-    await broadcast(room, "word", {"word": "_" * len(room.word or "")}, exclude={room.drawer_id or ""})
+    await broadcast(
+        room,
+        "word",
+        {"word": room.masked_word},
+        exclude={room.drawer_id or ""},
+    )
+
+
+async def end_round(room: Room, *, reason: str):
+    # reveal word and schedule next round
+    await broadcast(room, "roundOver", {"word": room.word, "reason": reason})
+    room.round_started_ms = None
+    room.word = None
+    room.masked_word = None
+
+    # Auto-next round (intermission)
+    async def _auto_next():
+        await asyncio.sleep(room.intermission_s)
+        if room.players:
+            await start_round(room)
+
+    asyncio.create_task(_auto_next())
 
 
 async def maybe_end_round(room: Room):
     if room.round_started_ms is None:
         return
     if (time.time() - (room.round_started_ms / 1000)) >= room.round_duration_s:
-        # Round over; reveal word.
-        await broadcast(room, "roundOver", {"word": room.word})
-        room.round_started_ms = None
-        room.word = None
+        await end_round(room, reason="timeout")
 
 
 @app.get("/api/health")
@@ -152,10 +176,25 @@ async def list_rooms():
                     "roomId": r.room_id,
                     "players": len(r.players),
                     "inRound": bool(r.round_started_ms),
+                    "category": r.category,
                 }
                 for r in ROOMS.values()
             ]
         }
+
+
+@app.get("/api/wordbank")
+def get_wordbank():
+    return {"categories": WORDBANK.categories}
+
+
+@app.post("/api/wordbank")
+def set_wordbank(payload: dict[str, Any]):
+    global WORDBANK
+    wb = parse_wordbank_payload(payload)
+    save_wordbank(DATA_PATH, wb)
+    WORDBANK = wb
+    return {"ok": True, "categories": list(WORDBANK.categories.keys())}
 
 
 @app.websocket("/ws")
@@ -190,6 +229,12 @@ async def ws_endpoint(ws: WebSocket):
         if room.draw_log:
             await send(ws, "drawReplay", {"events": room.draw_log})
 
+        # send current masked word if in round
+        if room.round_started_ms is not None and room.masked_word is not None:
+            # Drawer will get the real word later when round starts; for join mid-round,
+            # we only send masked word here.
+            await send(ws, "word", {"word": room.masked_word})
+
         await broadcast(room, "chat", {"system": True, "text": f"{name} 加入房间"}, exclude={client_id})
         await broadcast(room, "state", room.public_state())
 
@@ -201,8 +246,15 @@ async def ws_endpoint(ws: WebSocket):
             data = msg.get("data") or {}
 
             if t == "startRound":
-                # Anyone can start; for demo simplicity.
-                await start_round(room)
+                # Anyone can start a new round; auto-rotation handles drawer.
+                await start_round(room, force=True)
+
+            elif t == "setCategory":
+                cat = str(data.get("category") or "默认").strip()[:40]
+                if cat not in WORDBANK.categories:
+                    cat = "默认"
+                room.category = cat
+                await broadcast(room, "state", room.public_state())
 
             elif t == "chat":
                 text = str(data.get("text") or "")[:200]
@@ -217,9 +269,7 @@ async def ws_endpoint(ws: WebSocket):
                         player.score += 10
                         await broadcast(room, "chat", {"system": True, "text": f"{player.name} 猜对了！+10"})
                         await broadcast(room, "state", room.public_state())
-                        await broadcast(room, "roundOver", {"word": room.word})
-                        room.round_started_ms = None
-                        room.word = None
+                        await end_round(room, reason="guessed")
                         continue
 
                 await broadcast(room, "chat", {"name": player.name, "text": text})
