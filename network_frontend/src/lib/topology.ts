@@ -5,6 +5,7 @@ export type TopoNode = {
   id: string
   label: string
   kind: Device['kind']
+  role: Device['role']
   loopback: string
   igp: Device['igp']['type']
   vpnv4: boolean
@@ -27,6 +28,7 @@ export function buildTopologyFromSnapshot(snapshot: NetworkSnapshot, opts?: { ag
       id: d.id,
       label: d.name,
       kind: d.kind,
+      role: d.role,
       loopback: d.loopback,
       igp: d.igp.type,
       vpnv4: d.bgp.vpnv4Enabled,
@@ -53,6 +55,7 @@ export function buildTopologyFromSnapshot(snapshot: NetworkSnapshot, opts?: { ag
         label: `ACCESS x${count}`,
         // @ts-expect-error - ACC is a synthetic kind for visualization
         kind: 'ACC',
+        role: 'MAR',
         loopback: pe?.loopback ?? '-',
         igp: pe?.igp.type ?? 'OSPF',
         vpnv4: false,

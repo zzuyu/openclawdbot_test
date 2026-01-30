@@ -1,10 +1,18 @@
-export type NodeKind = 'PE' | 'P' | 'RR' | 'CE'
+export type NodeKind = 'PE' | 'P' | 'RR' | 'CE' | 'MAR'
+
+export type Role = 'MER' | 'MAR' | 'MCR' | 'RR' | 'CE'
 
 export type Iface = {
   name: string
   ip: string
   peer: { nodeId: string; iface: string }
   igpCost?: number
+  igp?: {
+    protocol: 'OSPF' | 'IS-IS'
+    isisLevel?: 1 | 2
+    area?: string
+    cost?: number
+  }
 }
 
 export type BgpPeer = {
@@ -60,6 +68,7 @@ export type Device = {
   vendor: 'Huawei'
   model: string
   kind: NodeKind
+  role: Role
   loopback: string
   asn: number
   igp: { type: 'OSPF' | 'IS-IS'; processId: string; area: string }
@@ -88,6 +97,7 @@ export const snapshot: NetworkSnapshot = {
       vendor: 'Huawei',
       model: 'NE40E-X8A',
       kind: 'PE',
+      role: 'MER',
       loopback: '10.255.0.1/32',
       asn: 65000,
       igp: { type: 'OSPF', processId: '1', area: '0.0.0.0' },
@@ -115,6 +125,7 @@ export const snapshot: NetworkSnapshot = {
       vendor: 'Huawei',
       model: 'NE40E-X16A',
       kind: 'P',
+      role: 'MCR',
       loopback: '10.255.0.11/32',
       asn: 65000,
       igp: { type: 'OSPF', processId: '1', area: '0.0.0.0' },
@@ -134,6 +145,7 @@ export const snapshot: NetworkSnapshot = {
       vendor: 'Huawei',
       model: 'NE40E-X8A',
       kind: 'RR',
+      role: 'RR',
       loopback: '10.255.0.254/32',
       asn: 65000,
       igp: { type: 'OSPF', processId: '1', area: '0.0.0.0' },
@@ -161,6 +173,7 @@ export const snapshot: NetworkSnapshot = {
       vendor: 'Huawei',
       model: 'NE40E-X8A',
       kind: 'PE',
+      role: 'MER',
       loopback: '10.255.0.2/32',
       asn: 65000,
       igp: { type: 'OSPF', processId: '1', area: '0.0.0.0' },
@@ -188,6 +201,7 @@ export const snapshot: NetworkSnapshot = {
       vendor: 'Huawei',
       model: 'AR2240',
       kind: 'CE',
+      role: 'CE',
       loopback: '10.10.10.1/32',
       asn: 65101,
       igp: { type: 'OSPF', processId: '10', area: '0.0.0.0' },
@@ -204,6 +218,7 @@ export const snapshot: NetworkSnapshot = {
       vendor: 'Huawei',
       model: 'AR2240',
       kind: 'CE',
+      role: 'CE',
       loopback: '10.20.20.1/32',
       asn: 65102,
       igp: { type: 'OSPF', processId: '20', area: '0.0.0.0' },

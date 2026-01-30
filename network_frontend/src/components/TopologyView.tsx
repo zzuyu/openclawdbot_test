@@ -3,6 +3,7 @@ import { Server, Router, Repeat2, Building2, Wifi } from 'lucide-react'
 
 import { layoutGraph, type LayoutResult } from '../lib/layout'
 import { layoutHierarchy } from '../lib/hierLayout'
+import { buildLinks } from '../lib/links'
 import { buildTopologyFromSnapshot, toGraph } from '../lib/topology'
 import type { NetworkSnapshot } from '../mock/network'
 import './topology.css'
@@ -16,7 +17,9 @@ function iconFor(kind: string) {
 }
 
 export default function TopologyView({ snapshot }: { snapshot: NetworkSnapshot }) {
-  const topo = useMemo(() => buildTopologyFromSnapshot(snapshot, { aggregateAccess: snapshot.devices.length > 120 }), [snapshot])
+  const agg = snapshot.devices.length > 120
+  const topo = useMemo(() => buildTopologyFromSnapshot(snapshot, { aggregateAccess: agg }), [snapshot, agg])
+  const links = useMemo(() => buildLinks(snapshot, { aggregateAccess: agg }), [snapshot, agg])
   const graph = useMemo(() => toGraph(topo), [topo])
 
   const [elkLayout, setElkLayout] = useState<LayoutResult | null>(null)
@@ -97,15 +100,25 @@ export default function TopologyView({ snapshot }: { snapshot: NetworkSnapshot }
       >
         <g transform={`translate(${40 + pan.x},${40 + pan.y}) scale(${zoom})`}>
           {layout.edges.map((e) => {
-            // highlight edges connected to hovered node
             const raw = topo.edges.find((x) => x.id === e.id)
             const hi = raw && hovered && (raw.a === hovered || raw.b === hovered)
+            const meta = links.find((l) => l.id === e.id.replace(/^e-/, 'l-') || l.id.endsWith(e.id.replace(/^e-/, '')))
             return (
-              <polyline
-                key={e.id}
-                className={hi ? 'topoEdge topoEdgeHi' : 'topoEdge'}
-                points={e.points.map((p) => `${p.x},${p.y}`).join(' ')}
-              />
+              <g key={e.id}>
+                <polyline
+                  className={hi ? 'topoEdge topoEdgeHi' : 'topoEdge'}
+                  points={e.points.map((p) => `${p.x},${p.y}`).join(' ')}
+                />
+                {meta && e.points.length >= 2 ? (
+                  <text
+                    className="topoEdgeLabel"
+                    x={(e.points[0].x + e.points[e.points.length - 1].x) / 2}
+                    y={(e.points[0].y + e.points[e.points.length - 1].y) / 2 - 6}
+                  >
+                    {meta.protocol}{meta.protocol === 'IS-IS' && meta.isisLevel ? ` L${meta.isisLevel}` : ''}
+                  </text>
+                ) : null}
+              </g>
             )
           })}
 
@@ -130,7 +143,7 @@ export default function TopologyView({ snapshot }: { snapshot: NetworkSnapshot }
                   {n.label}
                 </text>
                 <text x={36} y={45} className="topoNodeSub">
-                  {n.kind} · {n.igp}{n.vpnv4 ? ' · VPNv4' : ''}
+                  {n.role} · {n.igp}{n.vpnv4 ? ' · VPNv4' : ''}
                 </text>
               </g>
             )

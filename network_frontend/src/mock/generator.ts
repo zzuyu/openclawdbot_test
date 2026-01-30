@@ -1,5 +1,13 @@
 import type { Device, NetworkSnapshot, Tunnel, ServicePath } from './network'
 
+function roleFor(kind: Device['kind']): Device['role'] {
+  if (kind === 'P') return 'MCR'
+  if (kind === 'PE') return 'MER'
+  if (kind === 'RR') return 'RR'
+  if (kind === 'MAR') return 'MAR'
+  return 'CE'
+}
+
 function pad(n: number, w = 2) {
   return String(n).padStart(w, '0')
 }
@@ -15,7 +23,7 @@ export function generateLargeSnapshot(opts?: { pops?: number; pesPerPop?: number
 
   const igpType = (pop: number) => (pop % 2 === 0 ? 'IS-IS' : 'OSPF') as 'OSPF' | 'IS-IS'
 
-  // ~ (RR 2) + (P 8) + (PE 48) + (CE 144) = 202 nodes
+  // ~ (RR 2) + (P 8) + (MAR 8) + (PE 48) + (CE 144) = 210 nodes (but access may be aggregated)
   const devices: Device[] = []
 
   const asn = 65000
@@ -27,6 +35,7 @@ export function generateLargeSnapshot(opts?: { pops?: number; pesPerPop?: number
       vendor: 'Huawei',
       model: 'NE40E-X8A',
       kind: 'RR',
+      role: roleFor('RR'),
       loopback: '10.255.0.254/32',
       asn,
       igp: { type: 'OSPF', processId: '1', area: '0.0.0.0' },
@@ -40,6 +49,7 @@ export function generateLargeSnapshot(opts?: { pops?: number; pesPerPop?: number
       vendor: 'Huawei',
       model: 'NE40E-X8A',
       kind: 'RR',
+      role: roleFor('RR'),
       loopback: '10.255.0.253/32',
       asn,
       igp: { type: 'IS-IS', processId: '1', area: '49.0001' },
@@ -61,6 +71,7 @@ export function generateLargeSnapshot(opts?: { pops?: number; pesPerPop?: number
       vendor: 'Huawei',
       model: 'NE40E-X16A',
       kind: 'P',
+      role: roleFor('P'),
       loopback: `10.255.10.${p}/32`,
       asn,
       igp: igp === 'OSPF' ? { type: 'OSPF', processId: '1', area: '0.0.0.0' } : { type: 'IS-IS', processId: '1', area: '49.0001' },
@@ -71,6 +82,25 @@ export function generateLargeSnapshot(opts?: { pops?: number; pesPerPop?: number
   }
   devices.push(...ps)
 
+  // Add MAR per POP (aggregation)
+  for (let pop = 1; pop <= pops; pop++) {
+    const igp = igpType(pop)
+    devices.push({
+      id: `mar${pop}`,
+      name: `MAR${pop}`,
+      vendor: 'Huawei',
+      model: 'NE40E-X8A',
+      kind: 'MAR',
+      role: roleFor('MAR'),
+      loopback: `10.255.20.${pop}/32`,
+      asn,
+      igp: igp === 'OSPF' ? { type: 'OSPF', processId: '1', area: '0.0.0.0' } : { type: 'IS-IS', processId: '1', area: '49.0001' },
+      ifaces: [],
+      bgp: { routerId: `10.255.20.${pop}`, peers: [], vpnv4Enabled: false },
+      routes: [],
+    })
+  }
+
   // Build PE/CE per POP
   let idx = 1
   for (let pop = 1; pop <= pops; pop++) {
@@ -79,10 +109,11 @@ export function generateLargeSnapshot(opts?: { pops?: number; pesPerPop?: number
       const igp = igpType(pop)
       const pe: Device = {
         id: peId,
-        name: `PE${pop}-${k}`,
+        name: `MER${pop}-${k}`,
         vendor: 'Huawei',
         model: 'NE40E-X8A',
         kind: 'PE',
+        role: roleFor('PE'),
         loopback: loop(idx++),
         asn,
         igp: igp === 'OSPF' ? { type: 'OSPF', processId: '1', area: '0.0.0.0' } : { type: 'IS-IS', processId: '1', area: '49.0001' },
@@ -98,12 +129,13 @@ export function generateLargeSnapshot(opts?: { pops?: number; pesPerPop?: number
         routes: [],
       }
 
-      // Link PE to P(pop)
+      // Link MER (PE) to MAR(pop)
       pe.ifaces.push({
         name: 'GE0/0/0',
         ip: `172.${pop}.0.${k * 2 - 1}/30`,
-        peer: { nodeId: `p${pop}`, iface: `GE0/0/${k}` },
+        peer: { nodeId: `mar${pop}`, iface: `GE0/0/${k}` },
         igpCost: 10,
+        igp: { protocol: igp, isisLevel: igp === 'IS-IS' ? 1 : undefined, area: igp === 'OSPF' ? '0.0.0.0' : '49.0001', cost: 10 },
       })
 
       // CE(s)
@@ -116,6 +148,7 @@ export function generateLargeSnapshot(opts?: { pops?: number; pesPerPop?: number
           vendor: 'Huawei',
           model: 'AR2240',
           kind: 'CE',
+          role: roleFor('CE'),
           loopback: `10.${pop}.${k}.${c}/32`,
           asn: 65100 + pop,
           igp: ceIgp === 'OSPF' ? { type: 'OSPF', processId: String(100 + pop), area: '0.0.0.0' } : { type: 'IS-IS', processId: String(100 + pop), area: '49.1000' },
@@ -147,21 +180,42 @@ export function generateLargeSnapshot(opts?: { pops?: number; pesPerPop?: number
     }
   }
 
-  // Link each P to RR1/RR2 (simplified)
+  // Link each MAR to P + RR1/RR2 (core facing) with L2-ish for IS-IS
   for (let pop = 1; pop <= pops; pop++) {
+    const igp = igpType(pop)
+    const mar = devices.find((d) => d.id === `mar${pop}`)!
     const p = devices.find((d) => d.id === `p${pop}`)!
+
+    mar.ifaces.push({
+      name: 'GE0/0/0',
+      ip: `172.${pop}.100.1/30`,
+      peer: { nodeId: `p${pop}`, iface: 'GE0/0/0' },
+      igpCost: 10,
+      igp: { protocol: igp, isisLevel: igp === 'IS-IS' ? 2 : undefined, area: igp === 'OSPF' ? '0.0.0.0' : '49.0001', cost: 10 },
+    })
+
+    p.ifaces.push({
+      name: `GE0/0/${pop}`,
+      ip: `172.${pop}.100.2/30`,
+      peer: { nodeId: `mar${pop}`, iface: 'GE0/0/0' },
+      igpCost: 10,
+      igp: { protocol: igp, isisLevel: igp === 'IS-IS' ? 2 : undefined, area: igp === 'OSPF' ? '0.0.0.0' : '49.0001', cost: 10 },
+    })
+
     p.ifaces.push(
       {
-        name: 'GE0/0/0',
+        name: 'GE0/0/98',
         ip: `172.${pop}.255.1/30`,
         peer: { nodeId: 'rr1', iface: `GE0/0/${pop}` },
         igpCost: 10,
+        igp: { protocol: igp, isisLevel: igp === 'IS-IS' ? 2 : undefined, area: igp === 'OSPF' ? '0.0.0.0' : '49.0001', cost: 10 },
       },
       {
-        name: 'GE0/0/1',
+        name: 'GE0/0/99',
         ip: `172.${pop}.255.5/30`,
         peer: { nodeId: 'rr2', iface: `GE0/0/${pop}` },
         igpCost: 10,
+        igp: { protocol: igp, isisLevel: igp === 'IS-IS' ? 2 : undefined, area: igp === 'OSPF' ? '0.0.0.0' : '49.0001', cost: 10 },
       },
     )
   }

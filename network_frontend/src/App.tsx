@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import './styles.css'
 import { snapshot as smallSnapshot } from './mock/network'
 import { generateLargeSnapshot } from './mock/generator'
-import TopologyView from './components/TopologyView'
+import NetworkViews from './components/NetworkViews'
 
 type View = { kind: 'topo' } | { kind: 'device'; id: string } | { kind: 'tunnel'; id: string } | { kind: 'service'; id: string }
 
@@ -146,7 +146,7 @@ export default function App() {
 
               {view.kind === 'topo' ? (
                 <>
-                  <TopologyView snapshot={snapshot} />
+                  <NetworkViews snapshot={snapshot} />
                 </>
               ) : service ? (
                 <>
