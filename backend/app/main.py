@@ -263,11 +263,16 @@ async def ws_endpoint(ws: WebSocket):
                     continue
 
                 # Guess check
-                if room.word and room.drawer_id != client_id:
+                if room.word:
                     normalized = text.strip().lower()
-                    if normalized and normalized == room.word.strip().lower():
-                        player.score += 10
-                        await broadcast(room, "chat", {"system": True, "text": f"{player.name} 猜对了！+10"})
+                    can_guess = room.drawer_id != client_id or len(room.players) == 1
+                    if can_guess and normalized and normalized == room.word.strip().lower():
+                        # Solo mode: allow drawer to guess to advance rounds.
+                        if room.drawer_id != client_id:
+                            player.score += 10
+                            await broadcast(room, "chat", {"system": True, "text": f"{player.name} 猜对了！+10"})
+                        else:
+                            await broadcast(room, "chat", {"system": True, "text": f"{player.name} 通过（自练模式）"})
                         await broadcast(room, "state", room.public_state())
                         await end_round(room, reason="guessed")
                         continue

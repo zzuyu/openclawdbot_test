@@ -44,7 +44,7 @@ export default function App() {
   const [word, setWord] = useState('')
   const [chat, setChat] = useState<{ system?: boolean; name?: string; text: string }[]>([])
 
-  const [color, setColor] = useState('#1f5a4f')
+  const [color, setColor] = useState('#e5e7eb')
   const [size, setSize] = useState(5)
 
   const wsRef = useRef<WebSocket | null>(null)
@@ -243,6 +243,8 @@ export default function App() {
   }
 
   const [guess, setGuess] = useState('')
+  const solo = (state?.players?.length || 0) === 1
+  const canSendGuess = !isDrawer || solo
   function sendGuess() {
     const t = guess.trim()
     if (!t) return
@@ -273,8 +275,15 @@ export default function App() {
         {toast ? <div className="toast">{toast}</div> : null}
 
         {phase === 'lobby' ? (
-          <div style={{ padding: 18 }}>
-            <div className="panel">
+          <div className="lobbyWrap">
+            <div className="panel lobbyPanel">
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 14, letterSpacing: '.08em' }}>开局</div>
+                <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                  单人可自练，多人自动轮换画手。
+                </div>
+              </div>
+
               <div className="row">
                 <div style={{ flex: 1 }}>
                   <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
@@ -367,17 +376,21 @@ export default function App() {
 
               <div className="row" style={{ marginBottom: 10, gap: 12 }}>
                 <label className="muted" style={{ fontSize: 12 }}>
-                  颜色
+                  墨色
                 </label>
-                <input
-                  type="color"
+                <select
                   value={color}
                   onChange={(e) => setColor(e.target.value)}
                   disabled={!isDrawer}
-                  style={{ width: 48, padding: 0, height: 36 }}
-                />
+                  style={{ width: 140 }}
+                >
+                  <option value="#ffffff">雪白</option>
+                  <option value="#e5e7eb">雾白</option>
+                  <option value="#9ca3af">烟灰</option>
+                  <option value="#111827">墨黑</option>
+                </select>
                 <label className="muted" style={{ fontSize: 12 }}>
-                  粗细
+                  笔触
                 </label>
                 <input
                   type="range"
@@ -449,12 +462,13 @@ export default function App() {
                 <input
                   value={guess}
                   onChange={(e) => setGuess(e.target.value)}
-                  placeholder={isDrawer ? '你是画师，别在这儿泄题…' : '输入你的猜测，比如：熊猫'}
+                  placeholder={canSendGuess ? (solo ? '自练：输入答案推进下一轮' : '输入你的猜测，比如：熊猫') : '你是画师：专心画，别用嘴泄题'}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') sendGuess()
                   }}
+                  disabled={!canSendGuess}
                 />
-                <button className="primary" onClick={sendGuess} disabled={isDrawer}>
+                <button className="primary" onClick={sendGuess} disabled={!canSendGuess}>
                   发送
                 </button>
               </div>

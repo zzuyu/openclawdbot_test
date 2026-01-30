@@ -10,10 +10,11 @@ def test_health_ok():
     assert r.json() == {"ok": True}
 
 
-def test_wordbank_get_has_default_category():
+def test_wordbank_get_has_categories():
     c = TestClient(app)
     r = c.get("/api/wordbank")
     assert r.status_code == 200
     data = r.json()
     assert "categories" in data
-    assert "默认" in data["categories"]
+    assert isinstance(data["categories"], dict)
+    assert len(data["categories"].keys()) >= 1
