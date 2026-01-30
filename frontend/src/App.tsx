@@ -254,11 +254,29 @@ export default function App() {
   }
 
   const prettyWord = useMemo(() => {
-    if (!state?.round.startedMs) return '（未开始）'
+    if (!state?.round.startedMs) return '等待开局'
     if (isDrawer) return `题目：${word || '…'}`
     // viewers get masked word from server; still mask to be safe.
     return `题目：${maskedWord(word)}`
   }, [isDrawer, word, state?.round.startedMs])
+
+  const phaseLabel = useMemo(() => {
+    if (!state) return 'OFFLINE'
+    return state.round.startedMs ? 'IN ROUND' : 'LOBBY'
+  }, [state])
+
+  const drawerName = useMemo(() => {
+    if (!state?.drawerId) return '—'
+    return state.players.find((p) => p.id === state.drawerId)?.name || '—'
+  }, [state])
+
+  const mmss = (ms: number | null) => {
+    if (ms == null) return '--:--'
+    const s = Math.max(0, Math.ceil(ms / 1000))
+    const m = Math.floor(s / 60)
+    const r = s % 60
+    return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`
+  }
 
   return (
     <div className="container">
@@ -274,6 +292,21 @@ export default function App() {
         </div>
 
         {toast ? <div className="toast">{toast}</div> : null}
+
+        <div className="hud">
+          <div className="hudLeft">
+            <div className="hudTitle">{state?.roomId || roomId}</div>
+            <div className="hudMeta">
+              <span className="hudPill">{phaseLabel}</span>
+              <span className="hudPill">分类：{state?.category || '默认'}</span>
+              <span className="hudPill">画手：{drawerName}</span>
+            </div>
+          </div>
+          <div className="hudRight">
+            <div className="hudTimer">{mmss(roundLeft)}</div>
+            <div className="hudSub">{state ? `${state.players.length} ONLINE` : '—'}</div>
+          </div>
+        </div>
 
         {phase === 'lobby' ? (
           <div className="lobbyWrap">
