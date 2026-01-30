@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import './styles.css'
 import { snapshot } from './mock/network'
+import TopologyView from './components/TopologyView'
 
-type View = { kind: 'device'; id: string } | { kind: 'tunnel'; id: string } | { kind: 'service'; id: string }
+type View = { kind: 'topo' } | { kind: 'device'; id: string } | { kind: 'tunnel'; id: string } | { kind: 'service'; id: string }
 
 export default function App() {
-  const [view, setView] = useState<View>({ kind: 'service', id: snapshot.servicePaths[0].id })
+  const [view, setView] = useState<View>({ kind: 'topo' })
 
   const device = useMemo(() => {
     if (view.kind !== 'device') return null
@@ -23,11 +24,12 @@ export default function App() {
   }, [view])
 
   const selectedTitle = useMemo(() => {
+    if (view.kind === 'topo') return '拓扑布局'
     if (device) return `${device.name} · ${device.model}`
     if (tunnel) return `${tunnel.id} · ${tunnel.type}`
     if (service) return service.name
     return '—'
-  }, [device, tunnel, service])
+  }, [device, tunnel, service, view.kind])
 
   return (
     <div className="container">
@@ -44,6 +46,15 @@ export default function App() {
         <div className="grid">
           <div className="panel">
             <div className="h2">结构</div>
+            <div
+              className={`treeItem ${view.kind === 'topo' ? 'treeItemActive' : ''}`}
+              onClick={() => setView({ kind: 'topo' })}
+            >
+              <div style={{ fontSize: 12, letterSpacing: '.12em' }}>TOPOLOGY</div>
+              <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                设备布局 · 线路关系 · 可缩放
+              </div>
+            </div>
             <div className="treeItem">
               <div style={{ fontSize: 12, letterSpacing: '.12em' }}>IGP</div>
               <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
@@ -127,7 +138,11 @@ export default function App() {
               <div className="h2">视图</div>
               <div style={{ fontSize: 14, letterSpacing: '.06em', marginBottom: 10 }}>{selectedTitle}</div>
 
-              {service ? (
+              {view.kind === 'topo' ? (
+                <>
+                  <TopologyView />
+                </>
+              ) : service ? (
                 <>
                   <div className="h2">路径分层</div>
                   <div className="hop">
