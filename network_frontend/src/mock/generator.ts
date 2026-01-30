@@ -13,6 +13,8 @@ export function generateLargeSnapshot(opts?: { pops?: number; pesPerPop?: number
   const pesPerPop = opts?.pesPerPop ?? 6
   const cesPerPe = opts?.cesPerPe ?? 3
 
+  const igpType = (pop: number) => (pop % 2 === 0 ? 'IS-IS' : 'OSPF') as 'OSPF' | 'IS-IS'
+
   // ~ (RR 2) + (P 8) + (PE 48) + (CE 144) = 202 nodes
   const devices: Device[] = []
 
@@ -40,7 +42,7 @@ export function generateLargeSnapshot(opts?: { pops?: number; pesPerPop?: number
       kind: 'RR',
       loopback: '10.255.0.253/32',
       asn,
-      igp: { type: 'OSPF', processId: '1', area: '0.0.0.0' },
+      igp: { type: 'IS-IS', processId: '1', area: '49.0001' },
       ifaces: [],
       bgp: { routerId: '10.255.0.253', peers: [], vpnv4Enabled: true, rr: true },
       routes: [],
@@ -52,6 +54,7 @@ export function generateLargeSnapshot(opts?: { pops?: number; pesPerPop?: number
   // Core P nodes (one per POP)
   const ps: Device[] = []
   for (let p = 1; p <= pops; p++) {
+    const igp = igpType(p)
     ps.push({
       id: `p${p}`,
       name: `P${p}`,
@@ -60,7 +63,7 @@ export function generateLargeSnapshot(opts?: { pops?: number; pesPerPop?: number
       kind: 'P',
       loopback: `10.255.10.${p}/32`,
       asn,
-      igp: { type: 'OSPF', processId: '1', area: '0.0.0.0' },
+      igp: igp === 'OSPF' ? { type: 'OSPF', processId: '1', area: '0.0.0.0' } : { type: 'IS-IS', processId: '1', area: '49.0001' },
       ifaces: [],
       bgp: { routerId: `10.255.10.${p}`, peers: [], vpnv4Enabled: false },
       routes: [],
@@ -73,6 +76,7 @@ export function generateLargeSnapshot(opts?: { pops?: number; pesPerPop?: number
   for (let pop = 1; pop <= pops; pop++) {
     for (let k = 1; k <= pesPerPop; k++) {
       const peId = `pe${pad(pop)}-${pad(k)}`
+      const igp = igpType(pop)
       const pe: Device = {
         id: peId,
         name: `PE${pop}-${k}`,
@@ -81,7 +85,7 @@ export function generateLargeSnapshot(opts?: { pops?: number; pesPerPop?: number
         kind: 'PE',
         loopback: loop(idx++),
         asn,
-        igp: { type: 'OSPF', processId: '1', area: '0.0.0.0' },
+        igp: igp === 'OSPF' ? { type: 'OSPF', processId: '1', area: '0.0.0.0' } : { type: 'IS-IS', processId: '1', area: '49.0001' },
         ifaces: [],
         bgp: {
           routerId: loop(idx - 1).split('/')[0],
@@ -105,6 +109,7 @@ export function generateLargeSnapshot(opts?: { pops?: number; pesPerPop?: number
       // CE(s)
       for (let c = 1; c <= cesPerPe; c++) {
         const ceId = `ce${pad(pop)}-${pad(k)}-${pad(c)}`
+        const ceIgp = (c % 2 === 0 ? 'OSPF' : 'IS-IS') as 'OSPF' | 'IS-IS'
         const ce: Device = {
           id: ceId,
           name: `CE${pop}-${k}-${c}`,
@@ -113,7 +118,7 @@ export function generateLargeSnapshot(opts?: { pops?: number; pesPerPop?: number
           kind: 'CE',
           loopback: `10.${pop}.${k}.${c}/32`,
           asn: 65100 + pop,
-          igp: { type: 'OSPF', processId: String(100 + pop), area: '0.0.0.0' },
+          igp: ceIgp === 'OSPF' ? { type: 'OSPF', processId: String(100 + pop), area: '0.0.0.0' } : { type: 'IS-IS', processId: String(100 + pop), area: '49.1000' },
           ifaces: [
             {
               name: 'GE0/0/0',
@@ -161,8 +166,65 @@ export function generateLargeSnapshot(opts?: { pops?: number; pesPerPop?: number
     )
   }
 
+  // Tunnels: mix MPLS (LDP) + SR-TE, per POP pair
   const tunnels: Tunnel[] = []
+  for (let pop = 1; pop <= pops; pop++) {
+    const peA = `pe${pad(pop)}-${pad(1)}`
+    const peB = `pe${pad(((pop % pops) + 1))}-${pad(1)}`
+    tunnels.push(
+      {
+        id: `t-ldp-${pad(pop)}`,
+        type: 'LDP-LSP',
+        from: peA,
+        to: peB,
+        labels: [16000 + pop, 16010 + pop, 16020 + pop],
+        status: pop % 7 === 0 ? 'Down' : 'Up',
+        latencyMs: 3 + (pop % 5),
+      },
+      {
+        id: `t-srte-${pad(pop)}`,
+        type: 'SR-TE',
+        from: peA,
+        to: peB,
+        labels: [900000 + pop, 900100 + pop, 900200 + pop],
+        status: 'Up',
+        bandwidthMbps: 200 + pop * 10,
+        latencyMs: 2 + (pop % 3),
+      },
+    )
+  }
+
   const servicePaths: ServicePath[] = []
+  // Create a handful of services across POPs
+  for (let s = 1; s <= Math.min(18, pops * 2); s++) {
+    const popA = ((s - 1) % pops) + 1
+    const popB = ((s + 2) % pops) + 1
+    const peA = `pe${pad(popA)}-${pad(1)}`
+    const peB = `pe${pad(popB)}-${pad(1)}`
+    const ceA = `ce${pad(popA)}-${pad(1)}-${pad(1)}`
+    const ceB = `ce${pad(popB)}-${pad(1)}-${pad(1)}`
+
+    const useSr = s % 2 === 0
+    const tunId = useSr ? `t-srte-${pad(popA)}` : `t-ldp-${pad(popA)}`
+
+    servicePaths.push({
+      id: `svc-${s}`,
+      name: `VPN-A: ${ceA.toUpperCase()} -> ${ceB.toUpperCase()} (APP-${s})`,
+      vrf: 'VPN-A',
+      src: `192.168.${popA}.0/24`,
+      dst: `192.168.${popB}.0/24`,
+      policy: useSr ? 'sr-te' : 'bestpath',
+      tunnels: [tunId],
+      hops: [
+        { nodeId: ceA, outIface: 'GE0/0/0', nextHopIp: `192.168.${popA}.0.1` },
+        { nodeId: peA, inLabel: 10000 + s, outLabel: useSr ? 900000 + popA : 16000 + popA, nextHopIp: `172.${popA}.0.2` },
+        { nodeId: `p${popA}`, inLabel: useSr ? 900000 + popA : 16000 + popA, outLabel: useSr ? 900100 + popA : 16010 + popA, nextHopIp: `172.${popA}.255.2` },
+        { nodeId: 'rr1', inLabel: useSr ? 900100 + popA : 16010 + popA, outLabel: useSr ? 900200 + popA : 16020 + popA, nextHopIp: `172.${popB}.255.2` },
+        { nodeId: peB, inLabel: useSr ? 900200 + popA : 16020 + popA, outLabel: 20000 + s, nextHopIp: `192.168.${popB}.0.2` },
+        { nodeId: ceB },
+      ],
+    })
+  }
 
   const snap: NetworkSnapshot = {
     id: 'snap-large-200',

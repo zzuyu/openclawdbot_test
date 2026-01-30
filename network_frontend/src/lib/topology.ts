@@ -6,6 +6,8 @@ export type TopoNode = {
   label: string
   kind: Device['kind']
   loopback: string
+  igp: Device['igp']['type']
+  vpnv4: boolean
 }
 
 export type Topology = {
@@ -19,6 +21,8 @@ export function buildTopologyFromSnapshot(snapshot: NetworkSnapshot): Topology {
     label: d.name,
     kind: d.kind,
     loopback: d.loopback,
+    igp: d.igp.type,
+    vpnv4: d.bgp.vpnv4Enabled,
   }))
 
   const seen = new Set<string>()

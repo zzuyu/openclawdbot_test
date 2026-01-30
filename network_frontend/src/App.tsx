@@ -77,6 +77,14 @@ export default function App() {
               </div>
             ))}
 
+            <div className="h2">协议层</div>
+            <div className="treeItem">
+              <div style={{ fontSize: 12, letterSpacing: '.12em' }}>协议概览</div>
+              <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                IGP(OSPF/IS-IS) · MP-BGP(VPNv4) · MPLS(LDP) · SR-TE
+              </div>
+            </div>
+
             <div className="h2">BGP / RR</div>
             {snapshot.devices
               .filter((d) => d.bgp.peers.length || d.kind === 'RR')

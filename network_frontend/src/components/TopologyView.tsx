@@ -119,7 +119,7 @@ export default function TopologyView({ snapshot }: { snapshot: NetworkSnapshot }
                   {n.label}
                 </text>
                 <text x={36} y={45} className="topoNodeSub">
-                  {n.kind} · {n.loopback}
+                  {n.kind} · {n.igp}{n.vpnv4 ? ' · VPNv4' : ''}
                 </text>
               </g>
             )
