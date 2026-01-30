@@ -34,6 +34,7 @@ function maskedWord(w: string) {
 
 export default function App() {
   const [phase, setPhase] = useState<'lobby' | 'room'>('lobby')
+  const [toast, setToast] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [roomId, setRoomId] = useState('hanfeng')
 
@@ -80,6 +81,12 @@ export default function App() {
       })
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!toast) return
+    const t = setTimeout(() => setToast(null), 2600)
+    return () => clearTimeout(t)
+  }, [toast])
 
   function addChat(line: { system?: boolean; name?: string; text: string }) {
     setChat((c) => [...c.slice(-150), line])
@@ -153,7 +160,7 @@ export default function App() {
 
   function join() {
     if (!name.trim()) {
-      addChat({ system: true, text: '先起个名字，不然我只能叫你“无名氏”，很江湖。' })
+      addChat({ system: true, text: '先起个名字。不然系统只能叫你“无名氏”，太掉价。' })
       return
     }
 
@@ -263,6 +270,8 @@ export default function App() {
           </div>
         </div>
 
+        {toast ? <div className="toast">{toast}</div> : null}
+
         {phase === 'lobby' ? (
           <div style={{ padding: 18 }}>
             <div className="panel">
@@ -289,7 +298,7 @@ export default function App() {
                 </div>
               </div>
               <div className="muted" style={{ marginTop: 10, fontSize: 12 }}>
-                小提示：这版是 demo，没做登录、没做存档、也没做“甩锅功能”（断线重连）。
+                进入房间后开始一局即可开打：系统自动轮换画手，题库支持分类与上传。
               </div>
             </div>
           </div>
@@ -342,12 +351,15 @@ export default function App() {
                       if (d.ok) {
                         const wb = await (await fetch('/api/wordbank')).json()
                         setCategories(Object.keys(wb.categories || {}))
+                        setToast(`题库已更新：${Object.keys(wb.categories || {}).join('、')}`)
                         addChat({ system: true, text: `题库已更新：${Object.keys(wb.categories || {}).join('、')}` })
                       } else {
-                        addChat({ system: true, text: '题库更新失败（后端没接住）。' })
+                        setToast('题库更新失败')
+                        addChat({ system: true, text: '题库更新失败。' })
                       }
                     } catch {
-                      addChat({ system: true, text: '这 JSON 看起来不太像 JSON…' })
+                      setToast('文件不是合法 JSON')
+                      addChat({ system: true, text: '文件不是合法 JSON。' })
                     }
                   }}
                 />

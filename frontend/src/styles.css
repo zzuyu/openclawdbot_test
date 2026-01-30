@@ -14,7 +14,7 @@ body{
     "Noto Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   color: var(--ink);
   background:
-    radial-gradient(1200px 800px at 20% 0%, rgba(31,90,79,.10), transparent 60%),
+    radial-gradient(1200px 800px at 20% 0%, rgba(31,90,79,.12), transparent 60%),
     radial-gradient(900px 600px at 90% 10%, rgba(192,57,43,.10), transparent 55%),
     linear-gradient(180deg, var(--paper), #f8f4ec);
 }
@@ -28,23 +28,55 @@ a{ color: inherit; }
 }
 
 .card{
+  position: relative;
   border: 1px solid var(--mist);
   background: rgba(246,240,227,.72);
-  backdrop-filter: blur(8px);
-  border-radius: 18px;
-  box-shadow: 0 18px 60px rgba(31,41,55,.10);
+  backdrop-filter: blur(10px);
+  border-radius: 22px;
+  box-shadow: 0 24px 80px rgba(31,41,55,.14);
+  overflow: hidden;
+}
+
+.card::before{
+  content:"";
+  position:absolute;
+  inset:-2px;
+  background:
+    radial-gradient(600px 220px at 15% 10%, rgba(31,90,79,.22), transparent 55%),
+    radial-gradient(540px 240px at 85% 0%, rgba(192,57,43,.18), transparent 60%);
+  opacity:.55;
+  pointer-events:none;
+  filter: blur(18px);
+}
+
+.card::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      rgba(31,41,55,.035),
+      rgba(31,41,55,.035) 1px,
+      transparent 1px,
+      transparent 22px
+    );
+  opacity:.35;
+  pointer-events:none;
 }
 
 .header{
+  position: relative;
   display:flex;
   align-items:center;
   justify-content:space-between;
   padding: 18px 18px 0 18px;
+  z-index: 1;
 }
 
 .title{
   font-size: 18px;
-  letter-spacing: .06em;
+  letter-spacing: .10em;
   display:flex;
   gap:10px;
   align-items:center;
@@ -58,7 +90,27 @@ a{ color: inherit; }
   background: rgba(31,90,79,.08);
 }
 
+.toast{
+  position: sticky;
+  top: 10px;
+  margin: 12px 18px 0 18px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(31,41,55,.12);
+  background: rgba(31,90,79,.12);
+  backdrop-filter: blur(8px);
+  z-index: 2;
+  animation: pop .18s ease-out;
+}
+
+@keyframes pop{
+  from{ transform: translateY(-6px); opacity: .0; }
+  to{ transform: translateY(0px); opacity: 1; }
+}
+
 .grid{
+  position: relative;
+  z-index: 1;
   display:grid;
   grid-template-columns: 2fr 1fr;
   gap: 16px;
@@ -70,10 +122,14 @@ a{ color: inherit; }
 }
 
 .panel{
+  position: relative;
   padding: 14px;
-  border-radius: 14px;
+  border-radius: 16px;
   border: 1px solid var(--mist);
-  background: rgba(255,255,255,.35);
+  background: rgba(255,255,255,.38);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.35),
+    0 10px 28px rgba(31,41,55,.08);
 }
 
 .row{ display:flex; gap: 10px; align-items:center; }
@@ -106,23 +162,33 @@ button{
   cursor: pointer;
 }
 button.primary{
-  background: rgba(31,90,79,.18);
+  background: linear-gradient(180deg, rgba(31,90,79,.22), rgba(31,90,79,.14));
 }
 button.danger{
-  background: rgba(192,57,43,.14);
+  background: linear-gradient(180deg, rgba(192,57,43,.18), rgba(192,57,43,.10));
+}
+
+button:hover{
+  transform: translateY(-1px);
+  transition: transform .14s ease, box-shadow .14s ease;
+  box-shadow: 0 10px 22px rgba(31,41,55,.10);
+}
+
+button:active{
+  transform: translateY(0px);
 }
 
 .canvasWrap{
   position: relative;
   width: 100%;
   aspect-ratio: 16/10;
-  border-radius: 14px;
+  border-radius: 16px;
   overflow:hidden;
   border: 1px solid var(--mist);
   background:
-    radial-gradient(circle at 20% 20%, rgba(31,90,79,.08), transparent 55%),
-    radial-gradient(circle at 80% 30%, rgba(192,57,43,.06), transparent 55%),
-    linear-gradient(180deg, rgba(246,240,227,.75), rgba(255,255,255,.35));
+    radial-gradient(circle at 20% 20%, rgba(31,90,79,.10), transparent 55%),
+    radial-gradient(circle at 80% 30%, rgba(192,57,43,.08), transparent 55%),
+    linear-gradient(180deg, rgba(246,240,227,.78), rgba(255,255,255,.35));
 }
 
 canvas{ width: 100%; height: 100%; display:block; }
