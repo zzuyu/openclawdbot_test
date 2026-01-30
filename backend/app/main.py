@@ -51,10 +51,15 @@ class Room:
 
     category: str = "默认"
 
+    # background timer task for round timeout
+    timer_task: asyncio.Task | None = None
+
     # Keep last N draw events so late joiners see something.
     draw_log: list[dict[str, Any]] = field(default_factory=list)
 
     def public_state(self) -> dict[str, Any]:
+        started = self.round_started_ms
+        ends = (started + self.round_duration_s * 1000) if started else None
         return {
             "roomId": self.room_id,
             "players": [
@@ -64,9 +69,11 @@ class Room:
             "drawerId": self.drawer_id,
             "category": self.category,
             "round": {
-                "startedMs": self.round_started_ms,
+                "startedMs": started,
+                "endsMs": ends,
                 "durationS": self.round_duration_s,
             },
+            "phase": "IN_ROUND" if started else "LOBBY",
         }
 
 
@@ -116,6 +123,24 @@ def choose_word(room: Room) -> str:
     return random.choice(words)
 
 
+async def _arm_timer(room: Room):
+    # cancel old timer
+    if room.timer_task and not room.timer_task.done():
+        room.timer_task.cancel()
+    room.timer_task = None
+
+    async def _timer():
+        try:
+            await asyncio.sleep(room.round_duration_s)
+            # Only timeout if still in the same round.
+            if room.round_started_ms is not None:
+                await end_round(room, reason="timeout")
+        except asyncio.CancelledError:
+            return
+
+    room.timer_task = asyncio.create_task(_timer())
+
+
 async def start_round(room: Room, *, force: bool = False):
     # If a round is already running, do nothing unless force.
     if room.round_started_ms is not None and not force:
@@ -126,6 +151,8 @@ async def start_round(room: Room, *, force: bool = False):
     room.masked_word = "_" * len(room.word or "")
     room.round_started_ms = now_ms()
     room.draw_log.clear()
+
+    await _arm_timer(room)
 
     await broadcast(room, "state", room.public_state())
 
@@ -140,11 +167,18 @@ async def start_round(room: Room, *, force: bool = False):
 
 
 async def end_round(room: Room, *, reason: str):
+    # Cancel timer for this round
+    if room.timer_task and not room.timer_task.done():
+        room.timer_task.cancel()
+    room.timer_task = None
+
     # reveal word and schedule next round
     await broadcast(room, "roundOver", {"word": room.word, "reason": reason})
     room.round_started_ms = None
     room.word = None
     room.masked_word = None
+
+    await broadcast(room, "state", room.public_state())
 
     # Auto-next round (intermission)
     async def _auto_next():
@@ -156,10 +190,8 @@ async def end_round(room: Room, *, reason: str):
 
 
 async def maybe_end_round(room: Room):
-    if room.round_started_ms is None:
-        return
-    if (time.time() - (room.round_started_ms / 1000)) >= room.round_duration_s:
-        await end_round(room, reason="timeout")
+    # kept for backwards-compat; timeout handled by timer task.
+    return
 
 
 @app.get("/api/health")
@@ -246,8 +278,13 @@ async def ws_endpoint(ws: WebSocket):
             data = msg.get("data") or {}
 
             if t == "startRound":
-                # Anyone can start a new round; auto-rotation handles drawer.
-                await start_round(room, force=True)
+                # Anyone can start if no round running.
+                await start_round(room, force=False)
+
+            elif t == "skipRound":
+                # Skip current round (e.g., dead room). Only valid if in round.
+                if room.round_started_ms is not None:
+                    await end_round(room, reason="skip")
 
             elif t == "setCategory":
                 cat = str(data.get("category") or "默认").strip()[:40]
@@ -317,9 +354,18 @@ async def ws_endpoint(ws: WebSocket):
         if room is not None:
             async with ROOM_LOCK:
                 p = room.players.pop(client_id, None)
+                left_name = p.name if p else "有人"
+
                 if room.players:
-                    await broadcast(room, "chat", {"system": True, "text": f"{(p.name if p else '有人')} 离开房间"})
-                    await broadcast(room, "state", room.public_state())
+                    # If the drawer left mid-round, end the round and rotate.
+                    if room.drawer_id == client_id and room.round_started_ms is not None:
+                        await broadcast(room, "chat", {"system": True, "text": f"{left_name} 离开房间（本轮作废，自动换画手）"})
+                        await end_round(room, reason="drawer_left")
+                    else:
+                        await broadcast(room, "chat", {"system": True, "text": f"{left_name} 离开房间"})
+                        await broadcast(room, "state", room.public_state())
                 else:
                     # cleanup empty room
+                    if room.timer_task and not room.timer_task.done():
+                        room.timer_task.cancel()
                     ROOMS.pop(room.room_id, None)

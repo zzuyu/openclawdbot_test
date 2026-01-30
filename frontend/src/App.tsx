@@ -8,7 +8,8 @@ type StateMsg = {
   players: Player[]
   drawerId: string | null
   category: string
-  round: { startedMs: number | null; durationS: number }
+  phase: 'LOBBY' | 'IN_ROUND'
+  round: { startedMs: number | null; endsMs: number | null; durationS: number }
 }
 
 type DrawEvt = {
@@ -59,9 +60,9 @@ export default function App() {
 
   const roundLeft = useMemo(() => {
     if (!state?.round.startedMs) return null
-    const end = state.round.startedMs + state.round.durationS * 1000
+    const end = state.round.endsMs ?? state.round.startedMs + state.round.durationS * 1000
     return Math.max(0, end - Date.now())
-  }, [state?.round.startedMs, state?.round.durationS])
+  }, [state?.round.startedMs, state?.round.endsMs, state?.round.durationS])
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -265,7 +266,7 @@ export default function App() {
         <div className="header">
           <div className="title">
             <span>你画我猜</span>
-            <span className="badge">青黛 · 朱砂 · 宣纸</span>
+            <span className="badge">墨 · 白</span>
           </div>
           <div className="muted" style={{ fontSize: 12 }}>
             {state ? `${state.players.length} 人在线` : '未连接'}
@@ -325,8 +326,8 @@ export default function App() {
                 </div>
 
                 <div className="row">
-                  <button onClick={() => send('startRound')} className="primary">
-                    开始一局
+                  <button onClick={() => send(state?.round.startedMs ? 'skipRound' : 'startRound')} className="primary">
+                    {state?.round.startedMs ? '跳过本轮' : '开局'}
                   </button>
                   <button onClick={() => send('clear')} className="danger">
                     清屏
