@@ -46,6 +46,7 @@ export async function layoutGraph(nodes: GraphNode[], edges: GraphEdge[]): Promi
 
   // ELK types are not shipped; keep the boundary here explicit.
   type AnyRec = Record<string, unknown>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const res = (await elk.layout(g as unknown as any)) as AnyRec
   const w = (res as AnyRec).width
   const h = (res as AnyRec).height

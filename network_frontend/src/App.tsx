@@ -1,27 +1,22 @@
 import { useMemo, useState } from 'react'
 import './styles.css'
-import { snapshot } from './mock/network'
+import { snapshot as smallSnapshot } from './mock/network'
+import { generateLargeSnapshot } from './mock/generator'
 import TopologyView from './components/TopologyView'
 
 type View = { kind: 'topo' } | { kind: 'device'; id: string } | { kind: 'tunnel'; id: string } | { kind: 'service'; id: string }
 
 export default function App() {
+  const [mode, setMode] = useState<'SMALL' | 'LARGE'>('LARGE')
+  const snapshot = useMemo(() => {
+    return mode === 'LARGE' ? generateLargeSnapshot() : smallSnapshot
+  }, [mode])
+
   const [view, setView] = useState<View>({ kind: 'topo' })
 
-  const device = useMemo(() => {
-    if (view.kind !== 'device') return null
-    return snapshot.devices.find((d) => d.id === view.id) || null
-  }, [view])
-
-  const tunnel = useMemo(() => {
-    if (view.kind !== 'tunnel') return null
-    return snapshot.tunnels.find((t) => t.id === view.id) || null
-  }, [view])
-
-  const service = useMemo(() => {
-    if (view.kind !== 'service') return null
-    return snapshot.servicePaths.find((s) => s.id === view.id) || null
-  }, [view])
+  const device = view.kind === 'device' ? snapshot.devices.find((d) => d.id === view.id) || null : null
+  const tunnel = view.kind === 'tunnel' ? snapshot.tunnels.find((t) => t.id === view.id) || null : null
+  const service = view.kind === 'service' ? snapshot.servicePaths.find((s) => s.id === view.id) || null : null
 
   const selectedTitle = useMemo(() => {
     if (view.kind === 'topo') return '拓扑布局'
@@ -40,6 +35,9 @@ export default function App() {
             <span className="pill">Snapshot: {snapshot.id}</span>
             <span className="pill">Region: {snapshot.region}</span>
             <span className="pill">TS: {snapshot.ts}</span>
+            <span className="pill" style={{ cursor: 'pointer' }} onClick={() => setMode(mode === 'LARGE' ? 'SMALL' : 'LARGE')}>
+              MODE: {mode}
+            </span>
           </div>
         </div>
 
@@ -140,7 +138,7 @@ export default function App() {
 
               {view.kind === 'topo' ? (
                 <>
-                  <TopologyView />
+                  <TopologyView snapshot={snapshot} />
                 </>
               ) : service ? (
                 <>

@@ -1,4 +1,4 @@
-import { snapshot, type Device } from '../mock/network'
+import type { Device, NetworkSnapshot } from '../mock/network'
 import type { GraphEdge, GraphNode } from './layout'
 
 export type TopoNode = {
@@ -13,7 +13,7 @@ export type Topology = {
   edges: { id: string; a: string; b: string }[]
 }
 
-export function buildTopologyFromSnapshot(): Topology {
+export function buildTopologyFromSnapshot(snapshot: NetworkSnapshot): Topology {
   const nodes: TopoNode[] = snapshot.devices.map((d) => ({
     id: d.id,
     label: d.name,

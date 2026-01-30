@@ -2,15 +2,33 @@
   height: 100%;
 }
 
+.topoToolbar{
+  display:flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
 .topoSvg{
   width: 100%;
-  height: 100%;
+  height: calc(100% - 34px);
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.02);
+  cursor: grab;
 }
+
+.topoSvg:active{ cursor: grabbing; }
 
 .topoEdge{
   fill: none;
-  stroke: rgba(255,255,255,.14);
+  stroke: rgba(255,255,255,.12);
   stroke-width: 1.2;
+}
+
+.topoEdgeHi{
+  stroke: rgba(255,255,255,.34);
+  stroke-width: 1.8;
 }
 
 .topoNode rect{
@@ -20,8 +38,17 @@
 }
 
 .topoNode:hover rect{
-  stroke: rgba(255,255,255,.28);
+  stroke: rgba(255,255,255,.30);
   fill: rgba(255,255,255,.07);
+}
+
+.topoNodeHover rect{
+  stroke: rgba(255,255,255,.42);
+  fill: rgba(255,255,255,.09);
+}
+
+.topoNodeDim{
+  opacity: .35;
 }
 
 .topoNodeActive rect{
