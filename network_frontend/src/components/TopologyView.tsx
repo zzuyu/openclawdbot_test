@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Server, Router, Repeat2, Building2 } from 'lucide-react'
+import { Server, Router, Repeat2, Building2, Wifi } from 'lucide-react'
 
 import { layoutGraph, type LayoutResult } from '../lib/layout'
+import { layoutHierarchy } from '../lib/hierLayout'
 import { buildTopologyFromSnapshot, toGraph } from '../lib/topology'
 import type { NetworkSnapshot } from '../mock/network'
 import './topology.css'
@@ -10,29 +11,37 @@ function iconFor(kind: string) {
   if (kind === 'RR') return <Repeat2 size={16} />
   if (kind === 'P') return <Router size={16} />
   if (kind === 'PE') return <Server size={16} />
+  if (kind === 'ACC') return <Wifi size={16} />
   return <Building2 size={16} />
 }
 
 export default function TopologyView({ snapshot }: { snapshot: NetworkSnapshot }) {
-  const topo = useMemo(() => buildTopologyFromSnapshot(snapshot), [snapshot])
+  const topo = useMemo(() => buildTopologyFromSnapshot(snapshot, { aggregateAccess: snapshot.devices.length > 120 }), [snapshot])
   const graph = useMemo(() => toGraph(topo), [topo])
 
-  const [layout, setLayout] = useState<LayoutResult | null>(null)
+  const [elkLayout, setElkLayout] = useState<LayoutResult | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [hovered, setHovered] = useState<string | null>(null)
 
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
 
+  const computedLayout = useMemo(() => {
+    if (topo.nodes.length > 120) return layoutHierarchy(topo)
+    return null
+  }, [topo])
+
   useEffect(() => {
+    if (computedLayout) return
+
     let cancelled = false
     layoutGraph(graph.nodes, graph.edges).then((l) => {
-      if (!cancelled) setLayout(l)
+      if (!cancelled) setElkLayout(l)
     })
     return () => {
       cancelled = true
     }
-  }, [graph.edges, graph.nodes])
+  }, [computedLayout, graph.edges, graph.nodes])
 
   const neighbors = useMemo(() => {
     if (!hovered) return new Set<string>()
@@ -43,6 +52,8 @@ export default function TopologyView({ snapshot }: { snapshot: NetworkSnapshot }
     }
     return set
   }, [hovered, topo.edges])
+
+  const layout = computedLayout ?? elkLayout
 
   if (!layout) {
     return <div className="muted">布局计算中…</div>
